@@ -1,24 +1,25 @@
 # VM address: 192.168.122.55
 # chrony in VM is started by "sudo ./chronyd -d"
 # chrony on host is started by "sudo ./chronyd"
+# chrony on host is stopped by "sudo ./chronyc shutdown"
 # Monitoring is performed by "sudo ./chronyc ntpdata 192.168.122.55"
 # chrony.conf in virtual machine:
 #
-# server 0.ru.pool.ntp.org iburst
-# server 1.ru.pool.ntp.org iburst
-# server 2.ru.pool.ntp.org iburst
-# server 3.ru.pool.ntp.org iburst
+# server 188.225.9.167 iburst
+# server 91.207.136.55 iburst
+# server 213.141.154.170 iburst
+# server 91.209.94.10 iburst
 # driftfile /var/lib/chrony/drift
 # allow
-# ut1 -0.0194957
+# ut1 bulletina.csv
 #
 # chrony.conf on host machine:
 #
-# server 0.ru.pool.ntp.org iburst
-# server 1.ru.pool.ntp.org iburst
-# server 2.ru.pool.ntp.org iburst
-# server 3.ru.pool.ntp.org iburst
-# server 192.168.122.55 iburst
+# server 188.225.9.167 iburst
+# server 91.207.136.55 iburst
+# server 213.141.154.170 iburst
+# server 91.209.94.10 iburst
+# server 192.168.122.55 iburst noselect
 # driftfile /var/lib/chrony/drift
 import json
 import os
@@ -34,14 +35,13 @@ MEASUREMENTS = 3600 // SECS_BETWEEN_MEASUREMENTS
 VM_ADDRESS = "192.168.122.55"
 
 
-def receive(pattern):
-    output = check_output(["./chronyc", "ntpdata", VM_ADDRESS], text=True)
-    match = re.search(pattern, output)
-    if not match:
-        print(output)
+def receive(index, expected_length):
+    tokens = check_output(["./chronyc", "-c", "ntpdata", VM_ADDRESS], text=True).split(',')
+    if len(tokens) != expected_length:
+        print(check_output(["./chronyc", "-c", "ntpdata", VM_ADDRESS], text=True))
         print("Error: can't access virtual machine")
         exit(1)
-    return match.group(1)
+    return tokens[index]
 
 
 def save(offset_list):
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         exit(1)
     call("./chronyd")
     while True:
-        if receive(r"Mode\s*: (\w+)\n") == "Server":
+        if receive(7, 34) == "Server":
             print("VM is up!")
             break
         print("Waiting for VM data...")
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     try:
         for i in range(MEASUREMENTS):
             time.sleep(SECS_BETWEEN_MEASUREMENTS)
-            offset = float(receive(r"Offset\s*: (.+) seconds\n"))
+            offset = float(receive(18, 34))
             print("Offset:", offset)
             result.append(offset)
             if len(result) % SAVE_EVERY_N_MEASUREMENTS == 0:
@@ -77,3 +77,4 @@ if __name__ == '__main__':
         print("Finished!", end=' ')
     finally:
         save(result)
+        call(["./chronyc", "shutdown"])
